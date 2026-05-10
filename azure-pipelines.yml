@@ -1,0 +1,69 @@
+# Azure DevOps pipeline: static code validation (flake8) + unit tests (pytest)
+# Triggers on every push to main and on pull requests targeting main.
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  pythonVersion: '3.11'
+  # Use SQLite during tests so the build agent does not need pyodbc / Azure SQL.
+  DATABASE_URL: 'sqlite:///:memory:'
+  DB_USERNAME: 'pasinozavr'
+  DB_PASSWORD: '61YcGTqd'
+  DB_SERVER: 'tcp:cloud2026.database.windows.net'
+  DB_DATABASE: 'pr2'
+  ODBC_DRIVER: 'ODBC Driver 17 for SQL Server'
+  LOG_LEVEL: 'DEBUG'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python $(pythonVersion)'
+    inputs:
+      versionSpec: '$(pythonVersion)'
+      addToPath: true
+
+  - script: |
+      sudo apt-get update
+      sudo apt-get install -y curl gnupg apt-transport-https unixodbc-dev
+      curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+      curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | \
+        sudo tee /etc/apt/sources.list.d/mssql-release.list
+      sudo apt-get update
+      sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
+    displayName: 'Install Microsoft ODBC Driver 17 for SQL Server'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+      pip install flake8 pytest pytest-cov
+    displayName: 'Install Python dependencies'
+
+  - script: |
+      flake8 app tests \
+        --count \
+        --max-line-length=120 \
+        --extend-ignore=E203,W503 \
+        --statistics
+    displayName: 'Static code validation (flake8)'
+
+  - script: |
+      pytest tests -v --tb=short --junitxml=junit/test-results.xml
+    displayName: 'Run unit tests (pytest)'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish test results'
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'junit/test-results.xml'
+      testRunTitle: 'Unit tests'
