@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    name: Static analysis and unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Microsoft ODBC Driver 17 for SQL Server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg apt-transport-https
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | \
+            sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest pytest-cov
+
+      - name: Static code validation (flake8)
+        run: |
+          flake8 app tests \
+            --count \
+            --max-line-length=120 \
+            --extend-ignore=E203,W503 \
+            --statistics
+
+      - name: Run unit tests (pytest)
+        env:
+          DB_USERNAME: pasinozavr
+          DB_PASSWORD: 61YcGTqd
+          DB_SERVER: tcp:cloud2026.database.windows.net
+          DB_DATABASE: pr2
+          ODBC_DRIVER: ODBC Driver 17 for SQL Server
+          LOG_LEVEL: DEBUG
+        run: |
+          pytest tests -v --tb=short
