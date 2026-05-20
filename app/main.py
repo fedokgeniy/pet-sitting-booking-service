@@ -10,12 +10,20 @@ from .logging_config import configure_logging, get_logger
 from .models import Booking, BookingStatusHistory
 from .schemas import BookingCreate, BookingOut, BookingStatusHistoryOut, BookingStatusUpdate
 from .service_bus import publish_booking_event
+from strawberry.fastapi import GraphQLRouter
+from .graphql_schema import schema
+from .database import get_db
+
+async def get_context(db: Session = Depends(get_db)):
+    return {"db": db}
 
 configure_logging()
 logger = get_logger(__name__)
 
 app = FastAPI(title="Booking Service")
 
+graphql_app = GraphQLRouter(schema, context_getter=get_context)
+app.include_router(graphql_app, prefix="/graphql")
 
 @app.on_event("startup")
 def startup() -> None:
@@ -44,10 +52,10 @@ def seed():
     return {"status": "ok", "schema": "booking", "message": "stub data inserted"}
 
 
-@app.get("/bookings", response_model=list[BookingOut])
-def get_bookings(db: Session = Depends(get_db)):
-    logger.info("GET /bookings")
-    return db.query(Booking).order_by(Booking.created_at.desc()).all()
+#@app.get("/bookings", response_model=list[BookingOut])
+#def get_bookings(db: Session = Depends(get_db)):
+ #   logger.info("GET /bookings")
+  #  return db.query(Booking).order_by(Booking.created_at.desc()).all()
 
 
 @app.get("/bookings/{booking_id}", response_model=BookingOut)
